@@ -1,0 +1,15 @@
+Package: gbmt
+Type: Package
+Title: Group-Based Multivariate Trajectory Modeling
+Version: 0.1.1
+Date: 2021-11-23
+Author: Alessandro Magrini
+Maintainer: Alessandro Magrini <alessandro.magrini@unifi.it>
+Description: Estimation and analysis of group-based multivariate trajectory models (Nagin, 2018 <doi:10.1177/0962280216673085>). The package implements an Expectation-Maximization (EM) algorithm allowing unbalanced panel and missing values, and provides several functionalities for prediction and graphical representation.
+Depends: R (>= 3.5.0), Matrix
+Imports: methods
+License: GPL-2
+NeedsCompilation: no
+Packaged: 2021-11-23 13:43:04 UTC; Alessandro
+Repository: CRAN
+Date/Publication: 2021-11-23 19:30:01 UTC

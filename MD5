@@ -1,0 +1,12 @@
+e36001319dbc62073892e62e18226635 *DESCRIPTION
+7dfc1d9e511769bf66764c6c114be542 *NAMESPACE
+c765b1b9ec1c3bf3aadf1f3b75b7fba2 *R/gbmt.R
+d52d8ad1b028b4ba608c0312bf21cb77 *data/agrisus.rda
+580251db4f20b10106bc4acb62f56a0a *data/agrisus2.rda
+e5841c8bf91ca5db808eba43f79607cc *man/agrisus.Rd
+1f423793175e5dc97261126ecd6c0fc4 *man/agrisus2.Rd
+4fb19138b258af0ce03bc07c66bfdef2 *man/gbmt-package.Rd
+44bcaaa90c89e7b4068837e6111e9f23 *man/gbmt.Rd
+77bb1a24f8dd7dcb08a75c1e1cc15141 *man/plot.gbmt.Rd
+624b12c49536d7d1738a8922e4ac4bff *man/posterior.Rd
+e133c483024ce4a2322cf8a88de32623 *man/predict.gbmt.Rd
