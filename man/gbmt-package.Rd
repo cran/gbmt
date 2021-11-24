@@ -7,8 +7,8 @@
   \tabular{ll}{
   Package: \tab gbmt\cr
   Type: \tab Package\cr
-  Version: \tab 0.1.1\cr
-  Date: \tab 2021-11-23\cr
+  Version: \tab 0.1.2\cr
+  Date: \tab 2021-11-24\cr
   License: \tab GPL-2
   }
 Group-based trajectory modeling is a statistical method to determine groups of units based on the trend of a multivariate time series.

@@ -41,7 +41,9 @@ scaleFun_inv <- function(x, scaling, par) {
 # multinormal density (auxiliary)
 logdmN <- function(x,mu,S) {
   k <- ncol(S)
-  cost <- -k/2*log(2*pi)-0.5*log(det(S)+1e-12)
+  dS <- det(S)
+  if(dS<=0) ldS <- -7.451e+2 else ldS <- log(dS)
+  cost <- -k/2*log(2*pi)-0.5*ldS
   W <- solve(S)
   ll <- c()
   for(i in 1:nrow(x)){

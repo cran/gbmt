@@ -108,6 +108,10 @@ varNames <- c("TFP_2005", "NetCapital_GVA",
 # - by default, standardization (scaling=2) is used.
 m3_2 <- gbmt(x.names=varNames, unit="Country", time="Year", d=2, ng=3, data=agrisus2, scaling=4)
 
+## NOT RUN: same model with multiple random restarts
+#m3_2r <- gbmt(x.names=varNames, unit="Country", time="Year", d=2, ng=3, data=agrisus2,
+#  scaling=4, nstart=10)
+
 # resulting groups
 m3_2$assign.list
 
@@ -117,15 +121,8 @@ m3_2$fitted
 # summary of regressions by group
 summary(m3_2)
 
-# same model with multiple random restarts
-set.seed(123)  ## seed for reproducibility
-m3_2r <- gbmt(x.names=varNames, unit="Country", time="Year", d=2, ng=3, data=agrisus2,
-  scaling=4, nstart=4)
-
-# fit alternative models
-m3_3 <- gbmt(x.names=varNames, unit="Country", time="Year", d=3, ng=3, data=agrisus2,
-  scaling=4)  ## 3 groups and 3 polynomial degrees
-m4_3 <- gbmt(x.names=varNames, unit="Country", time="Year", d=3, ng=4, data=agrisus2,
-  scaling=4)  ## 4 groups and 4 polynomial degrees
-rbind(m3_2$ic, m3_3$ic, m4_3$ic)  ## comparison
+# fit a model with 4 groups
+m4_2 <- gbmt(x.names=varNames, unit="Country", time="Year", d=2, ng=4, data=agrisus2,
+  scaling=4)
+rbind(m3_2$ic, m4_2$ic)  ## comparison
 }
