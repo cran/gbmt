@@ -13,7 +13,7 @@
   \item{data}{Object of class \code{data.frame} containing the variables indicated in arguments \code{x.names}, \code{unit} and \code{time}. The variable indicated in argument \code{unit} must be of type 'character' or 'factor' and cannot contain missing values. The variable indicated in argument \code{time} must be of type 'numeric' or 'Date' and cannot contain missing values. Variables indicated in argument \code{x.names} must be of type 'numeric' and may contain missing values. Variables indicated in argument \code{x.names} which are completely missing or not present in \code{data} will be ignored. The time points may differ across units (unbalanced panel) but they must be unique within units.}
   \item{scaling}{Normalisation method, that should be indicated as: 0 (no normalisation), 1 (centering), 2 (standardization), 3 (ratio to the mean) and 4 (logarithmic ratio to the mean). Default is 2 (standardization). See 'Details'.}
   \item{pruning}{Logical value indicating whether non-significant polynomial terms should be dropped. Default is \code{TRUE}. See 'Details'.}
-  \item{nstart}{Positive integer value indicating the number of random restarts of the EM algorithm. If \code{NULL} (the default), the EM algorithm is started from uniform posterior probabilities.}
+  \item{nstart}{Positive integer value indicating the number of random restarts of the EM algorithm. If \code{NULL} (the default), the EM algorithm is started from the solution of a hierarchical cluster with Ward's linkage.}
   \item{tol}{Positive value indicating the tolerance of the EM algorithm. Default is 1e-4.}
   \item{maxit}{Positive integer value indicating the maximum number of iterations of the EM algorithm. Default is 1000.}
   \item{quiet}{Logical value indicating whether prompt messages should be suppressed. Default is \code{FALSE}.}
@@ -32,7 +32,7 @@
   \item{\code{assign.list}: }{list indicating the assignement of the units to the groups.}
   \item{\code{logLik}: }{log-likelihood of the model.}
   \item{\code{npar}: }{total number of free parameters in the model.}
-  \item{\code{ic}: }{information criteria for the model (see Magrini, 2021 for details.}
+  \item{\code{ic}: }{information criteria for the model (see Magrini, 2022 for details.}
   \item{\code{appa}: }{average posterior probability of assignments (APPA) for the model.}
   \item{\code{data.orig}: }{data provided to argument \code{data}.}
   \item{\code{data.scaled}: }{data after normalization.}
@@ -74,7 +74,7 @@ where \eqn{\phi(\mbox{y}^*_{i,t}\mid \mbox{B}_j,\Sigma_j)} is the multivariate N
 The posterior probability of group \eqn{j} for unit \eqn{i} is computed as:
 \deqn{\mbox{Pr}(G_i=j\mid \mbox{y}^*_i)\equiv\pi_{i,j}=\frac{\widehat{\pi}_j \prod_{t=1}^{T}\phi(\mbox{y}^*_{i,t}\mid \widehat{\mbox{B}}_j,\widehat{\Sigma}_j)}{\sum_{j=1}^J\widehat{\pi}_j \prod_{t=1}^{T}\phi(\mbox{y}^*_{i,t}\mid \widehat{\mbox{B}}_j,\widehat{\Sigma}_j)}}
 where the hat symbol above a parameter denotes the estimated value for that parameter.
-See the vignette of the package and Magrini (2021) for details on maximum likelihood estimation through the EM algorithm.
+See the vignette of the package and Magrini (2022) for details on maximum likelihood estimation through the EM algorithm.
 
 S3 methods available for class \code{gbmt} include:
 \itemize{
@@ -92,7 +92,7 @@ S3 methods available for class \code{gbmt} include:
 }
 %\note{}
 \references{
-A. Magrini (2021). Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach. To be appeared on \emph{Advances in Statistical Analysis}.
+A. Magrini (2022). Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach. \emph{Advances in Statistical Analysis}, published online: March 2022. DOI: 10.1007/s10182-022-00437-9
 }
 \seealso{\link{plot.gbmt}; \link{predict.gbmt}.}
 \examples{
@@ -104,7 +104,7 @@ varNames <- c("TFP_2005", "NetCapital_GVA",
 
 # model with 2 degrees and 3 groups using the imputed dataset
 # - log ratio to the mean is used as normalisation (scaling=4), thus values
-#   represent proportional changes with respect to country averages (see Magrini, 2021)
+#   represent relative changes with respect to country averages (see Magrini, 2022)
 # - by default, standardization (scaling=2) is used.
 m3_2 <- gbmt(x.names=varNames, unit="Country", time="Year", d=2, ng=3, data=agrisus2, scaling=4)
 

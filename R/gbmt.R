@@ -40,24 +40,26 @@ scaleFun_inv <- function(x, scaling, par) {
 
 # multinormal density (auxiliary)
 logdmN <- function(x,mu,S) {
-  k <- ncol(S)
   dS <- det(S)
-  if(dS<=0) ldS <- -7.451e+2 else ldS <- log(dS)
-  cost <- -k/2*log(2*pi)-0.5*ldS
-  W <- solve(S)
-  ll <- c()
-  for(i in 1:nrow(x)){
-    idx <- as.vector(t(x[i,]-mu[i,]))
-    ll[i] <- cost-0.5*t(idx)%*%W%*%(idx)
+  if(dS>0) {
+    cost <- -ncol(S)/2*log(2*pi)-0.5*log(dS)
+    W <- solve(S)
+    ll <- c()
+    for(i in 1:nrow(x)){
+      idx <- as.vector(t(x[i,]-mu[i,]))
+      ll[i] <- cost-0.5*t(idx)%*%W%*%(idx)
+      }
+    ll
+    } else {
+    rep(-Inf,length(x))
     }
-  ll
   }
 
 # smooth covariance matrix (auxiliary)
 smoothFun <- function(S) {
   tt <- tryCatch(solve(S), error=function(e){e})
   if(is(tt,"error")) {
-    #print("smoothed")
+    #print("smoothed")  ## <-- lisciamento
     as.matrix(nearPD(S)$mat)
     } else {
     S
@@ -140,21 +142,19 @@ pruneFun <- function(beta, posterior, data) {
     mod <- lm(form, data=data, weights=wei)
     deg <- d
     fine <- 0
-    #
-    if(sum(wei!=0)==0) fine <- 1  ## <-- gestione gruppi vuoti
-    #
     while(fine==0) {
       if(deg<=0) {
         fine <- 1
         } else {
         pval <- suppressWarnings(summary(mod)$coef)[,4]
         p_last <- pval[length(pval)]
-        if(is.na(p_last) || p_last>0.05) {
+        if(is.na(p_last) | p_last>0.05) {
           deg <- deg-1
           if(deg>=1) {
             form <- formula(paste0(xname,"~",paste("I(t^",1:deg,")",collapse="+")))
             } else {
             form <- formula(paste0(xname,"~1"))
+            fine <- 1
             }
           mod <- lm(form, data=data, weights=wei)
           } else {
@@ -176,6 +176,7 @@ pruneFun <- function(beta, posterior, data) {
       ijmod <- modSel(xname=nomi[j], wei=weiMat[,i])
       ireg[[j]] <- ijmod
       ijb <- ijmod$coefficients
+      ijb[which(is.na(ijb))] <- 0  ## gestione singolarita'
       ibhat[1:length(ijb),j] <- ijb
       }
     names(ireg) <- nomi
@@ -224,7 +225,9 @@ wlsFit <- function(x.names,data,t,weights=NULL,d=1) {
     imod$call$data <- NULL
     #deparse(substitute(data))
     modList[[i]] <- imod
-    beta[,i] <- imod$coefficients
+    icoef <- imod$coefficients
+    icoef[which(is.na(icoef))] <- 0  ## gestione singolarita'
+    beta[,i] <- icoef
     res <- cbind(res, imod$residuals)
     }
   names(modList) <- colnames(beta) <- colnames(res) <- x.names
@@ -341,19 +344,23 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
         } else {
         idat <- data[,x.names,drop=F]
         }
-      imod <- wlsFit(x.names=x.names, data=idat, t=tval, weights=iwei, d=d)
-      reg[[i]] <- imod$fit
-      beta[[i]] <- imod$beta
-      S[[i]] <- imod$S
-      for(w in 1:n) {
-        auxw <- which(data[,unit]==cou[w])
-        wdat <- as.matrix(idat[auxw,x.names,drop=F])
-        if(np>1) {
-          ijD <- sum(logdmN(wdat, Xmat%*%beta[[i]], S[[i]]))
-          } else {
-          ijD <- sum(dnorm(wdat, Xmat%*%beta[[i]], sqrt(S[[i]]),log=T))
+      if(ng==1 | var(iwei)>0) {
+        imod <- wlsFit(x.names=x.names, data=idat, t=tval, weights=iwei, d=d)
+        reg[[i]] <- imod$fit
+        beta[[i]] <- imod$beta
+        S[[i]] <- imod$S
+        for(w in 1:n) {
+          auxw <- which(data[,unit]==cou[w])
+          wdat <- as.matrix(idat[auxw,x.names,drop=F])
+          if(np>1) {
+            ijD <- sum(logdmN(wdat, Xmat%*%beta[[i]], S[[i]]))
+            } else {
+            ijD <- sum(dnorm(wdat, Xmat%*%beta[[i]], sqrt(S[[i]]),log=T))
+            }
+          postd[w,i] <- pldBound(ijD+log(p0[i]))
           }
-        postd[w,i] <- pldBound(ijD+log(p0[i]))
+        } else {
+        postd[,i] <- -Inf  ## <-- gruppo vuoto
         }
       }
     # compute log likelihood
@@ -420,11 +427,27 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
     } else {
     newdat <- data[,c(unit,time,x.names)]
     }
+  # eliminate empty groups
+  auxchk <- which(sapply(assL,length)==0)
+  if(length(auxchk)>0) {
+    gOK <- setdiff(1:ng,auxchk)
+    beta <- beta[gOK]
+    S <- S[gOK]
+    postp <- postp[,gOK,drop=F]
+    reg <- reg[gOK]
+    p0 <- p0[gOK]/sum(p0[gOK])
+    assL <- assL[gOK]
+    postd <- postd[,gOK,drop=F]
+    ll_new <- sum(log(apply(exp(postd),1,sum)))
+    ng <- length(gOK)
+    warning("Some empty groups have been deleted")
+    }
+  # pruning
   if(pruning) {
     mpruned <- pruneFun(beta=beta, posterior=postp, data=newdat)
     reg <- mpruned$reg
     beta <- mpruned$beta
-    Sigma <- mpruned$S
+    S <- mpruned$S
     ll_new <- mpruned$logLik
     }
   npar <- nparCalc(beta)
@@ -452,6 +475,42 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
   res
   }
 
+# spline imputation
+splineImp <- function(x) {
+  if(sum(!is.na(x))>1) {
+    xt <- length(x)
+    spline(x,xout=1:xt)$y
+    } else {
+    xnew <- x
+    xnew[which(is.na(x))] <- mean(x,na.rm=T)
+    xnew
+    }
+  }
+
+# initial clustering (auxiliary)
+iniClust <- function(x.names,unit,time,data) {
+  xunit <- factor(data[,unit])
+  xtime <- as.numeric(data[,time]-min(data[,time])+1)
+  cou <- levels(xunit)
+  poi <- sort(unique(xtime))
+  n <- length(cou)
+  np <- length(x.names)
+  nt <- length(poi)
+  dataArr <- array(dim=c(n,nt,np))
+  for(i in 1:n) {
+    for(j in 1:nt) {
+      ind <- which(xunit==cou[i]&xtime==poi[j])
+      if(length(ind)>0) dataArr[i,j,] <- unlist(data[ind,x.names])
+      }
+    }
+  dat <- dataArr[,1,]
+  for(j in 2:nt) dat <- cbind(dat, dataArr[,j,])
+  datI <- apply(dat,2,splineImp)
+  datOK <- t(na.omit(t(datI)))
+  rownames(datOK) <- cou
+  hclust(dist(datOK), method="ward.D2")
+  }
+
 # fit gbmt
 gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=NULL,tol=1e-4,maxit=1000,quiet=FALSE) {
   #
@@ -467,7 +526,13 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
   if(!is.character(time) || length(time)!=1) stop("Argument 'time' must be a character vector of length 1")
   if((time%in%colnames(data))==F) stop("Variable '",time,"' not found",sep="")
   if(!is.numeric(data[,time]) & inherits(data[,time],'Date')==F) stop("Variable '",time,"' must be either numeric or date")
-  if(sum(is.na(data[,time]))>0) stop("Variable '",time,"' cannot contain missing values")
+  if(sum(is.na(data[,time]))>0) stop("Variable '",time,"' contains missing values")
+  #
+  if(!is.numeric(ng) || length(ng)!=1 || ng<=0 || ng!=round(ng)) stop("Argument 'ng' must be a positive integer number")
+  if(!is.numeric(d) || length(d)!=1 || d<=0 || d!=round(d)) stop("Argument 'd' must be a positive integer number")
+  data[,unit] <- factor(data[,unit])
+  cou <- levels(data[,unit])
+  if(ng>length(cou)) stop("The number of groups cannot be greater than the number of units")
   #
   if(missing(x.names)) stop("Missing argument 'x.names'")
   if(!is.character(x.names) || length(x.names)<1) stop("Argument 'x.names' must be a character vector of length 1 or greater")
@@ -493,16 +558,16 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
       if(sum(data[,x.names[i]]<=0,na.rm=T)>0) stop("Variable '",x.names[i],"' contains zero or negative values: scaling=",scaling," cannot be applied",sep="")
       }
     }
-  if(!is.numeric(ng) || length(ng)!=1 || ng<=0 || ng!=round(ng)) stop("Argument 'ng' must be a positive integer number")
-  if(!is.numeric(d) || length(d)!=1 || d<=0 || d!=round(d)) stop("Argument 'd' must be a positive integer number")
   if(!is.null(nstart) && (length(nstart)!=1 || nstart<=0 || nstart!=round(nstart))) stop("Argument 'nstart' must be either NULL or a positive integer number")
-  if(!is.numeric(tol) || length(tol)!=1 || tol<=0) stop("Argument 'tol' must be a positive number")
-  if(!is.null(maxit) && (length(maxit)!=1 || maxit<=0 || maxit!=round(maxit))) stop("Argument 'maxit' must be a positive integer number")
-  if(!is.logical(pruning)) pruning <- T else pruning <- pruning[1]
-  if(!is.logical(quiet)) quiet <- F else quiet <- quiet[1]
+  if(!is.numeric(tol) || length(tol)!=1 || tol<=0) stop("Argument 'tol' must be a positive real number")
+  if(!is.numeric(maxit) || length(maxit)!=1 || maxit<=0 || maxit!=round(maxit)) stop("Argument 'maxit' must be a positive integer number")
+  #
+  pruning <- pruning[1]
+  if(is.na(pruning)||(!is.logical(pruning)|is.null(pruning))) pruning <- TRUE
+  quiet <- quiet[1]
+  if(is.na(quiet)||(!is.logical(quiet)|is.null(quiet))) quiet <- FALSE
+  #
   # sort data by time
-  data[,unit] <- factor(data[,unit])
-  cou <- levels(data[,unit])
   for(i in 1:length(cou)) {
     ind <- which(data[,unit]==cou[i])
     idat <- data[ind,]
@@ -538,8 +603,10 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
         }
       }
     } else {
-    ini0 <- rep(1:ng,length=length(cou))
-    names(ini0) <- sort(cou)
+    #ini0 <- rep(1:ng,length=length(cou))
+    #names(ini0) <- sort(cou)
+    cl0 <- iniClust(x.names=x.names,unit=unit,time=time,data=dataOK)
+    ini0 <- cutree(cl0, k=ng)
     mOK <- gbmtFit(x.names=x.names,unit=unit,time=time,ng=ng,d=d,data=dataOK,pruning=pruning,tol=tol,maxit=maxit,init=ini0,quiet=quiet,id_restart=NULL,nch0=0)
     res <- rbind(c(logLik=mOK$logLik,mOK$em))
     #iniMat <- rbind(mOK$initial)
@@ -654,8 +721,11 @@ predict.gbmt <- function(object, unit=NULL, n.ahead=0, bands=TRUE, conf=0.95, in
     unitOK <- levels(factor(object$data.orig[,object$call$unit]))
     if((unit%in%unitOK)==F) stop("Unknown unit '",unit,"'")
     }
-  if(!is.logical(bands)) bands <- T else bands <- bands[1]
-  if(!is.logical(in.sample)) in.sample <- F else in.sample <- in.sample[1]
+  #
+  bands <- bands[1]
+  if(is.na(bands)||(!is.logical(bands)|is.null(bands))) bands <- TRUE
+  in.sample <- in.sample[1]
+  if(is.na(in.sample)||(!is.logical(in.sample)|is.null(in.sample))) in.sample <- FALSE
   #
   if(!is.numeric(n.ahead)) stop("Argument 'n.ahead' must be a non-negative integer number")
   n.ahead <- max(n.ahead,na.rm=T)
@@ -740,10 +810,12 @@ t_col <- function(color, percent=50, name=NULL) {
   }
 
 # plot method
-plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=TRUE, conf=0.95, observed=TRUE, equal.scale=FALSE, trim=0,ylim=NULL, xlab="", ylab="",
+plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=TRUE, conf=0.95, observed=TRUE, equal.scale=FALSE, trim=0, ylim=NULL, xlab="", ylab="",
                       titles=NULL, add.grid=TRUE, col=NULL, transparency=-1, add.legend=TRUE, pos.legend=c(0,0), cex.legend=0.6, mar=c(5.1,4.1,4.1,2.1), ...) {
   if(is.null(unit) && !is.null(group)) {
-    if((group %in% names(x$reg))==F & (group %in% 1:length(x$reg))==F) stop("Invalid argument 'group': valid values are 1, ..., ",length(x$beta))
+    if((group %in% names(x$reg))==F & (group %in% 1:length(x$reg))==F) {
+      stop("Invalid argument 'group'. Valid values are: ",paste0(1:length(x$beta),collapse=", "))
+      }
     }
   if(!is.null(unit)) {
     if(length(unit)>1) stop("Argument 'unit' must be of length 1")
@@ -752,8 +824,10 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
     }
   if(is.numeric(n.ahead)) n.ahead <- max(n.ahead,na.rm=T)
   if(!is.numeric(n.ahead) || n.ahead<0 || n.ahead!=round(n.ahead)) stop("Argument 'n.ahead' must be a non-negative integer number")
-  if(!is.logical(bands)) bands <- T else bands <- bands[1]
-  if(!is.logical(add.grid)) add.grid <- T else add.grid <- add.grid[1]
+  bands <- bands[1]
+  if(is.na(bands)||(!is.logical(bands)|is.null(bands))) bands <- TRUE
+  add.grid <- add.grid[1]
+  if(is.na(add.grid)||(!is.logical(add.grid)|is.null(add.grid))) add.grid <- TRUE
   if(bands) {
     if(length(conf)>1) conf <- conf[1]
     if(!is.numeric(conf) || conf<0 || conf>=1) stop("Argument 'conf' must be a non-negative value less than 1")
@@ -768,14 +842,13 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
     xnam <- x.names
     }
   if(length(xnam)>1) {
-    #mar0 <- par()$mar
-    #mfrow0 <- par()$mfrow
-    #on.exit(par(mar=mar0,mfrow=mfrow0))
     oldpar <- par(no.readonly=T)
     on.exit(par(oldpar)) 
     }
-  if(!is.logical(observed)) observed <- T else observed <- observed[1]
-  if(!is.logical(equal.scale)) equal.scale <- F else equal.scale <- equal.scale[1]
+  observed <- observed[1]
+  if(is.na(observed)||(!is.logical(observed)|is.null(observed))) observed <- TRUE
+  equal.scale <- equal.scale[1]
+  if(is.na(equal.scale)||(!is.logical(equal.scale)|is.null(equal.scale))) equal.scale <- FALSE
   if(equal.scale) {
     if(!is.numeric(trim)) trim <- 0
     trim <- trim[1]
@@ -815,7 +888,7 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
     for(i in 1:length(xnam)) {
       if(is.null(ylim)) {
         if(observed) {
-          if(equal.scale==T) {
+          if(equal.scale) {
             ily1 <- range(pr)
             ily2 <- quantile(as.matrix(dat[,xall],prob=c(trim/2,1-trim/2)))
             } else {
@@ -824,7 +897,7 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
             }
           ly[[i]] <- c(min(ily1[1],ily2[1]),max(ily1[2],ily2[2]))
           } else {
-          if(equal.scale==T) {
+          if(equal.scale) {
             ly[[i]] <- range(pr)
             } else {
             ly[[i]] <- range(pr[[group]][[xnam[i]]])
@@ -944,7 +1017,8 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
       box()
       }
     } else {
-    if(!is.logical(add.legend)) add.legend <- T else add.legend <- add.legend[1]
+    add.legend <- add.legend[1]
+    if(is.na(add.legend)||(!is.logical(add.legend)|is.null(add.legend))) add.legend <- TRUE
     if(add.legend) {
       if(!is.numeric(pos.legend)) cex.legend <- c(0,0)
       pos.legend <- unname(c(pos.legend,0)[1:2])
@@ -1008,10 +1082,10 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
 
 # compute posterior probabilities for a new unit
 posterior <- function(x, newdata=NULL) {
+  if(!identical(class(x),"gbmt")) stop("Argument 'x' must be an object of class 'gbmt'")
   if(is.null(newdata)) {
     x$posterior
     } else {
-    if(!identical(class(x),"gbmt")) stop("Argument 'x' must be an object of class 'gbmt'")
     if(!identical(class(newdata),"data.frame")) stop("Argument 'newdata' must be NULL or an object of class 'data.frame'")
     xtime <- x$call$time
     if((xtime%in%colnames(newdata))==F) stop("Variable '",xtime,"' not found in 'newdata'")

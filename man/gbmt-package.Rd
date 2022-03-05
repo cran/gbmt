@@ -7,12 +7,12 @@
   \tabular{ll}{
   Package: \tab gbmt\cr
   Type: \tab Package\cr
-  Version: \tab 0.1.2\cr
-  Date: \tab 2021-11-24\cr
+  Version: \tab 0.1.3\cr
+  Date: \tab 2022-03-05\cr
   License: \tab GPL-2
   }
 Group-based trajectory modeling is a statistical method to determine groups of units based on the trend of a multivariate time series.
-It is a special case of latent class growth curves where the units in the same group have the same trajectory (Nagin, 2005), but it assumes a multivariate polynomial regression on time within each group, instead of a univariate one, to account for multiple indicators (Nagin et al., 2018; Magrini, 2021).
+It is a special case of latent class growth curves where the units in the same group have the same trajectory (Nagin, 2005), but it assumes a multivariate polynomial regression on time within each group, instead of a univariate one, to account for multiple indicators (Nagin et al., 2018; Magrini, 2022).
 A group-based multivariate trajectory model is estimated through the Expectation-Maximization (EM) algorithm, which allows unbalanced panel and missing values.
 The main functions currently implemented in the package are:
 \itemize{
@@ -24,7 +24,7 @@ The main functions currently implemented in the package are:
 }
 \author{Alessandro Magrini <alessandro.magrini@unifi.it>}
 \references{
-A. Magrini (2021). Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach. To be appeared on \emph{Advances in Statistical Analysis}.
+A. Magrini (2022). Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach. \emph{Advances in Statistical Analysis}, published online: March 2022. DOI: 10.1007/s10182-022-00437-9
 
 D. S. Nagin, B. L. Jones, V. L. Passos and R. E. Tremblay (2018). Group-based multi-trajectory modeling. \emph{Statistical Methods in Medical Research}, 27(7): 2015-2023. DOI: 10.1177/0962280216673085
 

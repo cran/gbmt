@@ -5,3 +5,8 @@ gbmt (0.1.1)
 gbmt (0.1.2)
 
 * fixed a bug in the gbmt function, causing a decrease of the likelihood in some specific circumstances
+
+gbmt (0.1.3)
+
+* implemented the automated deletion of empty groups in the gbmt function
+* references have been updated

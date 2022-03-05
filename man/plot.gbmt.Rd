@@ -60,6 +60,10 @@ plot(m3_2, group=1, n.ahead=3, mar=mar0, equal.scale=TRUE, trim=0.05)
 plot(m3_2, group=2, n.ahead=3, mar=mar0, equal.scale=TRUE, trim=0.05)
 plot(m3_2, group=3, n.ahead=3, mar=mar0, equal.scale=TRUE, trim=0.05)
 
+# overlapped groups with transparency
+plot(m3_2, group=1, n.ahead=3, mar=mar0, equal.scale=TRUE, trim=0.05,
+  transparency=80)
+
 # trajectories including 3 steps ahead prediction for unit 'Italy'
-plot(m3_2, unit="Italy", n.ahead=3)
+plot(m3_2, unit="Italy", n.ahead=3, transparency=80)
 }
