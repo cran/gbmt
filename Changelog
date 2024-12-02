@@ -10,3 +10,9 @@ gbmt (0.1.3)
 
 * implemented the automated deletion of empty groups in the gbmt function
 * references have been updated
+
+gbmt (0.1.4)
+
+* fixed a bug in the gbmt function, causing an error in case of empty groups
+* the deletion of empty groups in the gbmt function has been made optional through the argument 'delete.empty'
+* the 'achievement' dataset has been added

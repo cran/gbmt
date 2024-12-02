@@ -59,7 +59,7 @@ logdmN <- function(x,mu,S) {
 smoothFun <- function(S) {
   tt <- tryCatch(solve(S), error=function(e){e})
   if(is(tt,"error")) {
-    #print("smoothed")  ## <-- lisciamento
+    #print("smoothed") ## <-- if S is singular
     as.matrix(nearPD(S)$mat)
     } else {
     S
@@ -133,13 +133,16 @@ pruneFun <- function(beta, posterior, data) {
       weiMat[ind,j] <- posterior[i,j]
       }
     }
+  for(i in 1:ncol(weiMat)) {
+    if(sum(weiMat[,i]!=0)==0) weiMat[,i] <- rep(1,nrow(weiMat)) ## <- handling empty groups
+    }
   reg <- beta <- S <- vector("list",length=ng)
   postd <- matrix(nrow=nrow(posterior),ncol=ng)
   names(reg) <- names(beta) <- names(S) <- 1:ng
   #
   modSel <- function(xname, wei) {
     form <- formula(paste0(xname,"~",paste("I(t^",1:d,")",collapse="+")))
-    mod <- lm(form, data=data, weights=wei)
+    mod <- lm(form, data=data, weights=wei, na.action=na.exclude)
     deg <- d
     fine <- 0
     while(fine==0) {
@@ -147,8 +150,10 @@ pruneFun <- function(beta, posterior, data) {
         fine <- 1
         } else {
         pval <- suppressWarnings(summary(mod)$coef)[,4]
+        bval <- mod$coefficients
+        b_last <- bval[length(bval)]
         p_last <- pval[length(pval)]
-        if(is.na(p_last) | p_last>0.05) {
+        if(is.na(b_last) | is.na(p_last) | p_last>0.05) {
           deg <- deg-1
           if(deg>=1) {
             form <- formula(paste0(xname,"~",paste("I(t^",1:deg,")",collapse="+")))
@@ -156,7 +161,7 @@ pruneFun <- function(beta, posterior, data) {
             form <- formula(paste0(xname,"~1"))
             fine <- 1
             }
-          mod <- lm(form, data=data, weights=wei)
+          mod <- lm(form, data=data, weights=wei, na.action=na.exclude)
           } else {
           fine <- 1  
           }
@@ -176,7 +181,7 @@ pruneFun <- function(beta, posterior, data) {
       ijmod <- modSel(xname=nomi[j], wei=weiMat[,i])
       ireg[[j]] <- ijmod
       ijb <- ijmod$coefficients
-      ijb[which(is.na(ijb))] <- 0  ## gestione singolarita'
+      ijb[which(is.na(ijb))] <- 0  ## <-- replace NA due to collinearity
       ibhat[1:length(ijb),j] <- ijb
       }
     names(ireg) <- nomi
@@ -199,7 +204,7 @@ pruneFun <- function(beta, posterior, data) {
         wfit <- ifit[auxw,nomi,drop=F]
         ijD <- sum(logdmN(wdat, wfit, S[[i]]))
         } else {
-        ijD <- sum(dnorm(data[auxw,nomi], ifit[auxw], sqrt(S[[i]]),log=T))
+        ijD <- sum(dnorm(data[auxw,nomi], ifit[auxw], sqrt(S[[i]]), log=T))
         }
       postd[w,i] <- pldBound(ijD+log(mean(posterior[,i])))
       }
@@ -210,23 +215,28 @@ pruneFun <- function(beta, posterior, data) {
 
 # bound posterior log density (auxiliary)
 pldBound <- function(x) {
-  max(min(x,709.782),-7.451e+2)
+  if(is.na(x)) {
+    -7.451e+2
+    } else {
+    max(min(x,709.782),-7.451e+2)
+    }
   }
 
 # fit wls (auxiliary)
 wlsFit <- function(x.names,data,t,weights=NULL,d=1) {
+  if(sum(weights!=0)==0) weights <- rep(1,length(weights)) ## <- handling empty groups
   modList <- list()
   beta <- matrix(nrow=d+1,ncol=length(x.names))
   res <- cbind()
   for(i in 1:length(x.names)) {
     iform <- formula(paste0(x.names[i],"~",paste("I(t^",1:d,")",collapse="+")))
-    imod <- lm(iform, data=data, weights=weights)
+    imod <- lm(iform, data=data, weights=weights, na.action=na.exclude)
     imod$call$formula <- iform
     imod$call$data <- NULL
     #deparse(substitute(data))
     modList[[i]] <- imod
     icoef <- imod$coefficients
-    icoef[which(is.na(icoef))] <- 0  ## gestione singolarita'
+    icoef[which(is.na(icoef))] <- 0
     beta[,i] <- icoef
     res <- cbind(res, imod$residuals)
     }
@@ -243,11 +253,12 @@ wlsFit <- function(x.names,data,t,weights=NULL,d=1) {
       S <- S+weights[i]/swei*(ir%*%t(ir))
       }
     }
+  if(sum(S)==0) diag(S) <- 1  ## <-- if perfect fit
   list(fit=modList,beta=beta,S=smoothFun(S))
   }
 
 # run em algorithm (auxiliary)
-gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_restart,nch0) {
+gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,delete.empty,tol,maxit,init,quiet,id_restart,nch0) {
   data[,unit] <- factor(data[,unit])
   tnam <- levels(factor(data[,time]))
   tval <- as.numeric(data[,time]-min(data[,time])+1)
@@ -305,17 +316,20 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
       }
     }
   ll_old <- sum(log(apply(exp(postd),1,sum)))
-  fine <- count <- count2 <- 0
+  fine <- 0
+  count <- count2 <- 0
   if(quiet==F) {
-    mstr <- paste0(mstr0,"EM iteration ",count,". Log likelihood: ",round(ll_old,4))
+    mstr <- paste0(mstr0,"EM initialization. Log likelihood: ",round(ll_old,4))
     nch <- nchar(mstr)
     if(nch<nch0) {
       estr <- rep(" ",nch0-nch)
       } else {
       estr <- ""
       }
-    cat('\r',mstr,estr)
+    cat('\r')
+    cat(mstr,estr)
     flush.console()
+    nch0 <- nch
     } else {
     nch <- 0  
     }
@@ -331,7 +345,7 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
       postp[i,] <- exp(postd[i,])/sum(exp(postd[i,]))
       }
     Z_old <- Z
-    Z <- apply(postp,1,which.max)
+    Z <- apply(postp,1,function(x){which.max(x)})
     # m-step: calcolo prior, beta, sigma
     p0 <- colMeans(postp)
     for(i in 1:ng) {
@@ -344,23 +358,19 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
         } else {
         idat <- data[,x.names,drop=F]
         }
-      if(ng==1 | var(iwei)>0) {
-        imod <- wlsFit(x.names=x.names, data=idat, t=tval, weights=iwei, d=d)
-        reg[[i]] <- imod$fit
-        beta[[i]] <- imod$beta
-        S[[i]] <- imod$S
-        for(w in 1:n) {
-          auxw <- which(data[,unit]==cou[w])
-          wdat <- as.matrix(idat[auxw,x.names,drop=F])
-          if(np>1) {
-            ijD <- sum(logdmN(wdat, Xmat%*%beta[[i]], S[[i]]))
-            } else {
-            ijD <- sum(dnorm(wdat, Xmat%*%beta[[i]], sqrt(S[[i]]),log=T))
-            }
-          postd[w,i] <- pldBound(ijD+log(p0[i]))
+      imod <- wlsFit(x.names=x.names, data=idat, t=tval, weights=iwei, d=d)
+      reg[[i]] <- imod$fit
+      beta[[i]] <- imod$beta
+      S[[i]] <- imod$S
+      for(w in 1:n) {
+        auxw <- which(data[,unit]==cou[w])
+        wdat <- as.matrix(idat[auxw,x.names,drop=F])
+        if(np>1) {
+          ijD <- sum(logdmN(wdat, Xmat%*%beta[[i]], S[[i]]))
+          } else {
+          ijD <- sum(dnorm(wdat, Xmat%*%beta[[i]], sqrt(S[[i]]),log=T))
           }
-        } else {
-        postd[,i] <- -Inf  ## <-- gruppo vuoto
+        postd[w,i] <- pldBound(ijD+log(p0[i]))
         }
       }
     # compute log likelihood
@@ -368,7 +378,7 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
     # check convergence
     if(ll_new>=ll_old) {
       if(ll_new-ll_old<tol) fine <- 1
-      } else {
+      } else {  ## <-- decreased likelihood
       #print(paste0("Likelihood decreased: ",ll_old," -> ",ll_new))
       p0 <- p0_old
       beta <- beta_old
@@ -386,12 +396,13 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
         } else {
         estr <- ""
         }
-      cat('\r',mstr,estr)
+      cat('\r')
+      cat(mstr,estr)
       flush.console()
       nch0 <- nch
       }
     if(count>=maxit) fine <- 1
-    if(sum(Z_old-Z)==0) {
+    if(sum(Z_old-Z)==0) {  ## <- increase tol if no change to Z
       count2 <- count2+1
       if(ll_new-ll_old<tol*sqrt(count2)) fine <- 1
       } else {
@@ -410,7 +421,7 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
   for(i in 1:nrow(postd)) {
     postp[i,] <- exp(postd[i,])/sum(exp(postd[i,]))
     }
-  Z <- apply(postp,1,which.max)
+  Z <- apply(postp,1,function(x){which.max(x)})
   assL <- vector("list",length=ng)
   for(i in 1:ng) {
     assL[[i]] <- sort(names(which(Z==i)))
@@ -428,19 +439,21 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
     newdat <- data[,c(unit,time,x.names)]
     }
   # eliminate empty groups
-  auxchk <- which(sapply(assL,length)==0)
-  if(length(auxchk)>0) {
-    gOK <- setdiff(1:ng,auxchk)
-    beta <- beta[gOK]
-    S <- S[gOK]
-    postp <- postp[,gOK,drop=F]
-    reg <- reg[gOK]
-    p0 <- p0[gOK]/sum(p0[gOK])
-    assL <- assL[gOK]
-    postd <- postd[,gOK,drop=F]
-    ll_new <- sum(log(apply(exp(postd),1,sum)))
-    ng <- length(gOK)
-    warning("Some empty groups have been deleted")
+  if(delete.empty) {
+    auxchk <- which(sapply(assL,length)==0)
+    if(length(auxchk)>0) {
+      gOK <- setdiff(1:ng,auxchk)
+      beta <- beta[gOK]
+      S <- S[gOK]
+      postp <- postp[,gOK,drop=F]
+      reg <- reg[gOK]
+      p0 <- p0[gOK]/sum(p0[gOK])
+      assL <- assL[gOK]
+      postd <- postd[,gOK,drop=F]
+      ll_new <- sum(log(apply(exp(postd),1,sum)))
+      warning(ng-length(gOK)," empty groups have been deleted")
+      ng <- length(gOK)
+      }
     }
   # pruning
   if(pruning) {
@@ -475,20 +488,20 @@ gbmtFit <- function(x.names,unit,time,ng,d,data,pruning,tol,maxit,init,quiet,id_
   res
   }
 
-# spline imputation
-splineImp <- function(x) {
-  if(sum(!is.na(x))>1) {
-    xt <- length(x)
-    spline(x,xout=1:xt)$y
-    } else {
-    xnew <- x
-    xnew[which(is.na(x))] <- mean(x,na.rm=T)
-    xnew
-    }
-  }
-
 # initial clustering (auxiliary)
 iniClust <- function(x.names,unit,time,data) {
+  #
+  splineImp <- function(x) {
+    if(sum(!is.na(x))>1) {
+      xt <- length(x)
+      spline(x,xout=1:xt)$y
+      } else {
+      xnew <- x
+      xnew[which(is.na(x))] <- mean(x,na.rm=T)
+      xnew
+      }
+    }
+  #
   xunit <- factor(data[,unit])
   xtime <- as.numeric(data[,time]-min(data[,time])+1)
   cou <- levels(xunit)
@@ -512,7 +525,7 @@ iniClust <- function(x.names,unit,time,data) {
   }
 
 # fit gbmt
-gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=NULL,tol=1e-4,maxit=1000,quiet=FALSE) {
+gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,delete.empty=FALSE,nstart=NULL,tol=1e-4,maxit=1000,quiet=FALSE) {
   #
   if(missing(data)) stop("Missing argument 'data'")
   if(!identical(class(data), "data.frame")) stop("Argument 'data' must be a data.frame")
@@ -520,7 +533,7 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
   if(missing(unit)) stop("Missing argument 'unit'")
   if(!is.character(unit) || length(unit)!=1) stop("Argument 'unit' must be a character vector of length 1")
   if((unit%in%colnames(data))==F) stop("Variable '",unit,"' not found",sep="")
-  if(sum(is.na(data[,unit]))>0) stop("Variable '",unit,"' cannot contain missing values")
+  if(sum(is.na(data[,unit]))>0) stop("Variable '",unit,"' contains missing values")
   #
   if(missing(time)) stop("Missing argument 'time'")
   if(!is.character(time) || length(time)!=1) stop("Argument 'time' must be a character vector of length 1")
@@ -530,9 +543,19 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
   #
   if(!is.numeric(ng) || length(ng)!=1 || ng<=0 || ng!=round(ng)) stop("Argument 'ng' must be a positive integer number")
   if(!is.numeric(d) || length(d)!=1 || d<=0 || d!=round(d)) stop("Argument 'd' must be a positive integer number")
+  dmin <- min(table(data[,unit]))
+  if(dmin<2) stop("There must be at least two time points for each unit")
+  if(d>dmin-1) {
+    d <- dmin-1
+    warning("'d' was set to the maximum feasible value: ",d,sep="")
+    }
   data[,unit] <- factor(data[,unit])
   cou <- levels(data[,unit])
-  if(ng>length(cou)) stop("The number of groups cannot be greater than the number of units")
+  maxng <- round(length(cou)/2)
+  if(ng>maxng) {
+    ng <- maxng
+    warning("'ng' was set to the maximim feasible value: ",ng,sep="")
+    }
   #
   if(missing(x.names)) stop("Missing argument 'x.names'")
   if(!is.character(x.names) || length(x.names)<1) stop("Argument 'x.names' must be a character vector of length 1 or greater")
@@ -564,6 +587,8 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
   #
   pruning <- pruning[1]
   if(is.na(pruning)||(!is.logical(pruning)|is.null(pruning))) pruning <- TRUE
+  delete.empty <- delete.empty[1]
+  if(is.na(delete.empty)||(!is.logical(delete.empty)|is.null(delete.empty))) delete.empty <- FALSE
   quiet <- quiet[1]
   if(is.na(quiet)||(!is.logical(quiet)|is.null(quiet))) quiet <- FALSE
   #
@@ -587,14 +612,14 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
       }
     }
   if(!is.null(nstart)) {
-    mOK <- gbmtFit(x.names=x.names,unit=unit,time=time,ng=ng,d=d,data=dataOK,pruning=pruning,tol=tol,maxit=maxit,init=NULL,quiet=quiet,id_restart=1,nch0=0)
+    mOK <- gbmtFit(x.names=x.names,unit=unit,time=time,ng=ng,d=d,data=dataOK,pruning=pruning,delete.empty=delete.empty,tol=tol,maxit=maxit,init=NULL,quiet=quiet,id_restart=1,nch0=0)
     res <- c(logLik=mOK$logLik,mOK$em)
     #iniMat <- rbind(mOK$initial)
     #finMat <- rbind(mOK$assign)
     nch0 <- mOK$nch
     if(nstart>1) {
       for(i in 2:nstart) {
-        m0 <- gbmtFit(x.names=x.names,unit=unit,time=time,ng=ng,d=d,data=dataOK,pruning=pruning,tol=tol,maxit=maxit,init=NULL,quiet=quiet,id_restart=i,nch0=nch0)
+        m0 <- gbmtFit(x.names=x.names,unit=unit,time=time,ng=ng,d=d,data=dataOK,pruning=pruning,delete.empty=delete.empty,tol=tol,maxit=maxit,init=NULL,quiet=quiet,id_restart=i,nch0=nch0)
         res <- rbind(res,(c(logLik=m0$logLik,m0$em)))
         #iniMat <- rbind(iniMat,m0$initial)
         #finMat <- rbind(finMat,m0$assign)
@@ -603,12 +628,15 @@ gbmt <- function(x.names,unit,time,ng=1,d=2,data,scaling=2,pruning=TRUE,nstart=N
         }
       }
     } else {
-    #ini0 <- rep(1:ng,length=length(cou))
-    #names(ini0) <- sort(cou)
+    if(quiet==F) cat("Computing initial assignments ... ")
     cl0 <- iniClust(x.names=x.names,unit=unit,time=time,data=dataOK)
     ini0 <- cutree(cl0, k=ng)
-    mOK <- gbmtFit(x.names=x.names,unit=unit,time=time,ng=ng,d=d,data=dataOK,pruning=pruning,tol=tol,maxit=maxit,init=ini0,quiet=quiet,id_restart=NULL,nch0=0)
+    if(quiet==F) cat("Done","\n")
+    mOK <- gbmtFit(x.names=x.names,unit=unit,time=time,ng=ng,d=d,data=dataOK,pruning=pruning,delete.empty=delete.empty,tol=tol,maxit=maxit,init=ini0,quiet=quiet,id_restart=NULL,nch0=0)
     res <- rbind(c(logLik=mOK$logLik,mOK$em))
+    if(quiet==F) {
+      if(mOK$em["converged"]==1) cat("\n","Converged",sep="") else cat("\n","Maximum number of iterations reached",sep="")
+      }
     #iniMat <- rbind(mOK$initial)
     #finMat <- rbind(mOK$assign)
     }
@@ -730,9 +758,7 @@ predict.gbmt <- function(object, unit=NULL, n.ahead=0, bands=TRUE, conf=0.95, in
   if(!is.numeric(n.ahead)) stop("Argument 'n.ahead' must be a non-negative integer number")
   n.ahead <- max(n.ahead,na.rm=T)
   if(n.ahead<0 || n.ahead!=round(n.ahead)) stop("Argument 'n.ahead' must be a non-negative integer number")
-  #
-  ## <-- gestire n.ahead vettore
-  #
+  ## <- todo: handle 'n.ahead' vector
   if(identical(n.ahead,0) && in.sample==F) in.sample <- T
   if(bands) {
     if(length(conf)>1) conf <- conf[1]
@@ -811,7 +837,7 @@ t_col <- function(color, percent=50, name=NULL) {
 
 # plot method
 plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=TRUE, conf=0.95, observed=TRUE, equal.scale=FALSE, trim=0, ylim=NULL, xlab="", ylab="",
-                      titles=NULL, add.grid=TRUE, col=NULL, transparency=-1, add.legend=TRUE, pos.legend=c(0,0), cex.legend=0.6, mar=c(5.1,4.1,4.1,2.1), ...) {
+                      titles=NULL, add.grid=TRUE, col=NULL, transparency=75, add.legend=TRUE, pos.legend=c(0,0), cex.legend=0.6, mar=c(5.1,4.1,4.1,2.1), ...) {
   if(is.null(unit) && !is.null(group)) {
     if((group %in% names(x$reg))==F & (group %in% 1:length(x$reg))==F) {
       stop("Invalid argument 'group'. Valid values are: ",paste0(1:length(x$beta),collapse=", "))
@@ -831,7 +857,7 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
   if(bands) {
     if(length(conf)>1) conf <- conf[1]
     if(!is.numeric(conf) || conf<0 || conf>=1) stop("Argument 'conf' must be a non-negative value less than 1")
-    if(!is.numeric(transparency)) transparency <- -1
+    if(!is.numeric(transparency)) transparency <- 80
     transparency <- transparency[1]
     }
   pr <- predict.gbmt(x, group=NULL, unit=unit, n.ahead=n.ahead, bands=bands, conf=conf, in.sample=T)
@@ -889,18 +915,18 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
       if(is.null(ylim)) {
         if(observed) {
           if(equal.scale) {
-            ily1 <- range(pr)
+            ily1 <- range(pr,na.rm=T)
             ily2 <- quantile(as.matrix(dat[,xall],prob=c(trim/2,1-trim/2)))
             } else {
-            ily1 <- range(pr[[group]][[xnam[i]]])
+            ily1 <- range(pr[[group]][[xnam[i]]],na.rm=T)
             ily2 <- quantile(dat[ind,xnam[i]],prob=c(trim/2,1-trim/2))
             }
-          ly[[i]] <- c(min(ily1[1],ily2[1]),max(ily1[2],ily2[2]))
+          ly[[i]] <- c(min(ily1[1],ily2[1],na.rm=T),max(ily1[2],ily2[2],na.rm=T))
           } else {
           if(equal.scale) {
-            ly[[i]] <- range(pr)
+            ly[[i]] <- range(pr,na.rm=T)
             } else {
-            ly[[i]] <- range(pr[[group]][[xnam[i]]])
+            ly[[i]] <- range(pr[[group]][[xnam[i]]],na.rm=T)
             }
           }
         } else {
@@ -949,11 +975,11 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
     for(i in 1:length(xnam)) {
       if(is.null(ylim)) {
         if(observed) {
-          ily1 <- range(pr[[xnam[i]]])
+          ily1 <- range(pr[[xnam[i]]],na.rm=T)
           ily2 <- quantile(dat[ind,xnam[i]],prob=c(trim/2,1-trim/2))
-          ly[[i]] <- c(min(ily1[1],ily2[1]),max(ily1[2],ily2[2]))
+          ly[[i]] <- c(min(ily1[1],ily2[1],na.rm=T),max(ily1[2],ily2[2],na.rm=T))
           } else {
-          ly[[i]] <- range(pr[[xnam[i]]])
+          ly[[i]] <- range(pr[[xnam[i]]],na.rm=T)
           }
         } else {
         ly[[i]] <- ylim
@@ -1032,9 +1058,9 @@ plot.gbmt <- function(x, group=NULL, unit=NULL, x.names=NULL, n.ahead=0, bands=T
     for(i in 1:length(xnam)) {
       if(is.null(ylim)) {
         if(equal.scale) {
-          ly[[i]] <- range(pr)
+          ly[[i]] <- range(pr,na.rm=T)
           } else {
-          ly[[i]] <- range(lapply(pr,function(z){z[[xnam[i]]]}))
+          ly[[i]] <- range(lapply(pr,function(z){z[[xnam[i]]]}),na.rm=T)
           }
         } else {
         ly[[i]] <- ylim

@@ -33,6 +33,6 @@ European Commission (2020). Common Monitoring and Evaluation Framework (CMEF) fo
 
 Food and Agriculture Organization (2022). FAOSTAT statistical database. https://www.fao.org/faostat/en/#home
 
-A. Magrini (2022). Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach. \emph{Advances in Statistical Analysis}, published online: March 2022. DOI: 10.1007/s10182-022-00437-9
+A. Magrini (2022). Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach. \emph{AStA Advances in Statistical Analysis}, 106, 673-703. DOI: 10.1007/s10182-022-00437-9
 }
 \seealso{\link{agrisus2}}

@@ -1,0 +1,18 @@
+bibentry(bibtype = "Article",
+  title        = "Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach",
+  author       = person(given = "Alessandro",
+                        family = "Magrini",
+                        email = "alessandro.Magrini@unifi.it"),
+  journal      = "AStA Advances in Statistical Analysis",
+  year         = "2022",
+  volume       = "106",
+  pages        = "673--703",
+  doi          = "10.1007/s10182-022-00437-9",
+  header       = "To cite the gbmt package in publications use:",
+  textVersion  =
+  paste("A. Magrini (2022).",
+        "Assessment of agricultural sustainability in European Union countries: A group-based multivariate trajectory approach.",
+        "AStA Advances in Statistical Analysis, 106, 673-703.",
+        "DOI: 10.1007/s10182-022-00437-9")
+)
+
